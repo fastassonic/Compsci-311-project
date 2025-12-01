@@ -1,0 +1,99 @@
+#include <string.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+#define SERV_TCP_PORT 23 /* server's port number */
+#define MAX_SIZE 80
+
+int main(int argc, char *argv[])
+{
+    // sockfd = listening socket 
+    // newsockfd = writing socket... this is a rather unintuitive name and will be changed 
+    // cillen is address size 
+  int sockfd, newsockfd, clilen;
+    // cli_address is client address
+    // sserv_addr is server address 
+  struct sockaddr_in cli_addr, serv_addr;
+  int port;
+   // Message buffer. If possible I'd like to ahve this dynamically allocated
+  char string[MAX_SIZE];
+  //len refers to the actual length of the message...
+  int len;
+
+  /* command line: server [port_number] */
+
+  if(argc == 2)
+   //tldr turn port number from string into int.
+     sscanf(argv[1], "%d", &port); /* read the port number if provided */
+  else
+     port = SERV_TCP_PORT;
+
+  /* open a TCP socket (an Internet stream socket) */
+  if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+     perror("can't open stream socket");
+     exit(1);
+  }
+
+  /* bind the local address, so that the client can send to server */
+  // In linux for for some funny reason the server stuff is handeled as files
+  // so this is essentially telling the files managing each managed ip address to look for things
+  // this is itself a struct.
+
+  //this zeros out the server adress up to the point of the actual address size
+
+  bzero((char *) &serv_addr, sizeof(serv_addr));
+  // This tells the struct to only work on IPV4
+  serv_addr.sin_family = AF_INET;
+  // listen on all ip addressees on this network 
+  serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  // and which port to listen on
+  serv_addr.sin_port = htons(port);
+
+  //only happens if a failiure to bind occurs
+  if(bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+     perror("can't bind local address");
+     exit(1);
+  }
+
+
+  /* listen to the socket */
+  listen(sockfd, 5);
+
+  for(;;) {
+
+     /* wait for a connection from a client; this is an iterative server */
+     //set size of client address 
+     clilen = sizeof(cli_addr);
+     //this should block until a client is found. this is good!
+
+     newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+      //failure to bind
+     if(newsockfd < 0) {
+        perror("can't bind local address");
+     }
+
+     /* read a message from the client */
+     len = read(newsockfd, string, MAX_SIZE);
+     /* make sure it's a proper string */
+     string[len] = 0;
+     printf("%s\n", string);
+     //closes the conenction
+     close(newsockfd);
+  }
+}
+
+/*
+TO RUN THIS CODE:
+	gcc server.c -o server
+	./server 7777
+
+
+
+	NOTE: 7777 is the port number
+
+*/
