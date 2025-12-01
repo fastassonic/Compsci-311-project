@@ -13,11 +13,18 @@
 struct clientthreadargs {
     int clientsocketfiledescriptor;
     struct sockaddr_in client_addr;
-
-    
-
 };
 
+
+/* PLEASE READ BEFORE YOU GET CONFUSED/WORRIED
+I am aware this throws off vscodes intellesense. But this compiles
+The type pthread_rwlock_t is defined in pthreads.h 
+It's a mutex that allows simoltanous reading locks but one writing lock.
+this means when all the clients are reading, they don't have to take turns, and it's still locked from writing 
+this also means while writing ofcourse you can't read*/
+pthread_rwlock_t messagelock = PTHREAD_RWLOCK_INITIALIZER;
+char **messages = NULL;
+size_t numofmessages = 0;
 
 void *clientthread(void *arg){
     struct clientthreadargs *args = arg;
@@ -26,8 +33,10 @@ void *clientthread(void *arg){
     uint32_t ip_address = args->client_addr.sin_addr.s_addr;
     //Our structure is no longer necessary and we can free up the pointer, removing the information from the global stack and removing an overflow
     free(args);
+    //let our client know we can see them and write to them.
     write(clientfd,"Initial connected",strlen("Initial connected"));
-    
+
+
 
 }
 int main(int argc, char *argv[]){
