@@ -14,6 +14,8 @@ struct clientthreadargs {
     int clientsocketfiledescriptor;
     struct sockaddr_in client_addr;
 
+    
+
 };
 
 
@@ -22,8 +24,10 @@ void *clientthread(void *arg){
     int clientfd = args->clientsocketfiledescriptor;
     //this saves the ip address of the client, Honestly, this may be unnecessary but useful for persistent client info
     uint32_t ip_address = args->client_addr.sin_addr.s_addr;
-    //Our structure is no longer necessar and we can free up the pointer, removing the information from the global stack and removing an overflow
+    //Our structure is no longer necessary and we can free up the pointer, removing the information from the global stack and removing an overflow
     free(args);
+    write(clientfd,"Initial connected",strlen("Initial connected"));
+    
 
 }
 int main(int argc, char *argv[]){
