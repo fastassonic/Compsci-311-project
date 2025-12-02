@@ -7,8 +7,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <sys/eventfd.h>
+#include <sys/select.h>
 #define SERV_TCP_PORT 23 /* server's port number */
-#define MAX_SIZE 80
+#define MAX_SIZE 1500
 
 struct clientthreadargs {
     int clientsocketfiledescriptor;
@@ -16,15 +18,17 @@ struct clientthreadargs {
 };
 
 
-/* PLEASE READ BEFORE YOU GET CONFUSED/WORRIED
-I am aware this throws off vscodes intellesense. But this compiles
-The type pthread_rwlock_t is defined in pthreads.h 
-It's a mutex that allows simoltanous reading locks but one writing lock.
-this means when all the clients are reading, they don't have to take turns, and it's still locked from writing 
-this also means while writing ofcourse you can't read*/
-pthread_rwlock_t messagelock = PTHREAD_RWLOCK_INITIALIZER;
+static pthread_mutex_t broadcastlistmtx = PTHREAD_MUTEX_INITIALIZER;
+// with the broadcaster thread the rwlock was redudant 
+pthread_mutex_t messagelock = PTHREAD_MUTEX_INITIALIZER;
 char **messages = NULL;
 size_t numofmessages = 0;
+
+
+int efd;
+
+int *broadcastfds = NULL;
+size_t broadcastsize = 0;
 
 void *clientthread(void *arg){
     struct clientthreadargs *args = arg;
@@ -35,24 +39,79 @@ void *clientthread(void *arg){
     free(args);
     //let our client know we can see them and write to them.
     write(clientfd,"Initial connected",strlen("Initial connected"));
+    int connected = 1;
+    while (connected)
+    {
+        char string[MAX_SIZE];
+        int messagelength;
+        messagelength = read(clientfd, string, MAX_SIZE);
+        if (messagelength == 0){
+            connected = 0;
+            pthread_mutex_lock(&broadcastlistmtx);
+            int *temp = realloc(broadcastfds,sizeof(int) * (broadcastsize-1));
+            int decrementtoggle = 0;
+            for (size_t i=0; i<broadcastsize;i++){
+                if (broadcastfds[i] != clientfd){
+                    //this is dumb and hacky. THIS IS DUMB AND HACKY
+                    temp[i-decrementtoggle] = broadcastfds[i];
+                }
+                else{
+                    decrementtoggle++;
+                }
+            }
+            broadcastfds = temp;
+            broadcastsize--;
+            pthread_mutex_unlock(&broadcastlistmtx);
+        }
+        else{
+            pthread_mutex_lock(&messagelock);
+            char** temp = realloc(messages,sizeof(char*) * numofmessages+1);
+            messages=temp;
+            numofmessages++;
+            messages[numofmessages-1] = string;
+            pthread_mutex_unlock(&messagelock);
+            u_int64_t u = 1;
+            write(efd,&u,sizeof(u_int64_t));
+        }
 
+    }
+    
+    
 
 
 }
-int main(int argc, char *argv[]){
-  // socketfiledescriptor is used to define the listening socket.
-  // this socket is used for incoming connections before they get assigned their own sockets
-  int listeningfiledescriptor;
-  //this is a variable mapping the size of the adress... This is ipv4 exclusive so it should be 32 bytes by definition, but this was the way we were taught. Might ask about that 
-  int cillen;
-    // sserv_addr is server address, which should be our ipv4 address 
-  struct sockaddr_in serv_addr;
-  int port;
-   // Message buffer. If possible I'd like to ahve this dynamically allocated
-  char string[MAX_SIZE];
-  //len refers to the actual length of the message...
-  int len;
 
+
+void *broadcastthread(void *arg){
+    int lastreadindex = -1;
+    u_int64_t u;
+    for(;;){
+    read(efd,&u,sizeof(u));
+    lastreadindex++;
+    pthread_mutex_lock(&messagelock);
+    char* tempmessage = messages[lastreadindex];
+    pthread_mutex_unlock(&pthread_mutex_unlock);
+    for(int i=0;i<len(broadcastfds);i++){
+        write(broadcastfds[i],tempmessage,len(tempmessage));
+    }
+    }
+    
+}
+int main(int argc, char *argv[]){
+    // socketfiledescriptor is used to define the listening socket.
+    // this socket is used for incoming connections before they get assigned their own sockets
+    int listeningfiledescriptor;
+    //this is a variable mapping the size of the adress... This is ipv4 exclusive so it should be 32 bytes by definition, but this was the way we were taught. Might ask about that 
+    int cillen;
+    // sserv_addr is server address, which should be our ipv4 address 
+    struct sockaddr_in serv_addr;
+    int port;
+    // Message buffer. If possible I'd like to ahve this dynamically allocated
+    char string[MAX_SIZE];
+    //len refers to the actual length of the message...
+    int len;
+    // this is the event file descriptor 
+    efd = eventfd(0,0);
   /* command line: server [port_number] */
 
   if(argc == 2)
@@ -92,6 +151,9 @@ int main(int argc, char *argv[]){
 
   /* listen to the socket. the secound */
   listen(listeningfiledescriptor, 15);
+  pthread_t broadcastthreadtid;
+  pthread_create(&broadcastthreadtid,NULL,broadcastthread,NULL);
+  pthread_detach(broadcastthreadtid);
 
   //keep track fo the thread index
   for(;;) {
@@ -101,6 +163,11 @@ int main(int argc, char *argv[]){
     //this will get overwritten, but this is fine
     cillen=sizeof(tempclient->client_addr);
     tempclient->clientsocketfiledescriptor = accept(listeningfiledescriptor, (struct sockaddr *) &tempclient->client_addr, &cillen);
+    pthread_mutex_lock(&broadcastlistmtx);
+    int *temp = realloc(broadcastfds,sizeof(int) * broadcastsize+1);
+    broadcastfds = temp;
+    broadcastfds[broadcastsize+1] = tempclient->clientsocketfiledescriptor;
+    pthread_mutex_unlock(&broadcastlistmtx);
     //okay now we have to make our two important pieces of information
     pthread_t tid;
     pthread_create(&tid,NULL,clientthread,tempclient);
