@@ -1,3 +1,19 @@
+/*
+    For those of you who do not know what you're looking at
+
+    DO NOT RUN THIS IN ITS CURRENT STATE
+
+    I HAVE GOTTEN THIS INTO A STATE WHERE IT WORKS IN AN ABSOLUTELY PERFECT ENVIROMENT
+
+    REALITY IS NOT PERFECT
+
+    IT WILL CAUSE CORRUPTION IF RAN NOW. I'M ONLY COMMITING THIS BECAUSE I NEED TO STOP FOR TODAY. 
+
+    I WILL BE FIXING THIS LATER.
+
+*/
+
+
 #include <string.h>
 #include <stdio.h>
 #include <sys/types.h>
