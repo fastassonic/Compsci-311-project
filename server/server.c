@@ -44,11 +44,15 @@ void *clientthread(void *arg){
     {
         char string[MAX_SIZE];
         int messagelength;
-        messagelength = read(clientfd, string, MAX_SIZE);
-        if (messagelength == 0){
+        messagelength = read(clientfd, string, MAX_SIZE-1);
+        //This is to terminate the stirng 
+        
+        if (messagelength <= 0){
             connected = 0;
             pthread_mutex_lock(&broadcastlistmtx);
-            int *temp = realloc(broadcastfds,sizeof(int) * (broadcastsize-1));
+            broadcastsize--;
+            if (broadcastsize != 0){
+            int *temp = realloc(broadcastfds,sizeof(int) * (broadcastsize));
             int decrementtoggle = 0;
             for (size_t i=0; i<broadcastsize;i++){
                 if (broadcastfds[i] != clientfd){
@@ -60,21 +64,27 @@ void *clientthread(void *arg){
                 }
             }
             broadcastfds = temp;
-            broadcastsize--;
+            }
+            else{
+                free(broadcastfds);
+                broadcastfds = NULL;
+            }
             pthread_mutex_unlock(&broadcastlistmtx);
         }
         else{
+            string[messagelength] = '\0';
             pthread_mutex_lock(&messagelock);
-            char** temp = realloc(messages,sizeof(char*) * numofmessages+1);
+            char** temp = realloc(messages,sizeof(char*) * (numofmessages+1));
             messages=temp;
             numofmessages++;
-            messages[numofmessages-1] = string;
+            messages[numofmessages-1] = strdup(string);
             pthread_mutex_unlock(&messagelock);
             u_int64_t u = 1;
             write(efd,&u,sizeof(u_int64_t));
         }
 
     }
+    close(clientfd);
     
     
 
@@ -89,12 +99,16 @@ void *broadcastthread(void *arg){
     read(efd,&u,sizeof(u));
     lastreadindex++;
     pthread_mutex_lock(&messagelock);
-    char* tempmessage = messages[lastreadindex];
-    pthread_mutex_unlock(&pthread_mutex_unlock);
-    for(int i=0;i<len(broadcastfds);i++){
-        write(broadcastfds[i],tempmessage,len(tempmessage));
+    char* tempmessage = strdup(messages[lastreadindex]);
+    if (!tempmessage) continue;
+    pthread_mutex_unlock(&messagelock);
+    pthread_mutex_lock(&broadcastlistmtx);
+    for(int i=0;i<broadcastsize;i++){
+        write(broadcastfds[i],tempmessage,strlen(tempmessage));
     }
-    }
+    pthread_mutex_unlock(&broadcastlistmtx);
+    free(tempmessage);
+}
     
 }
 int main(int argc, char *argv[]){
@@ -164,9 +178,10 @@ int main(int argc, char *argv[]){
     cillen=sizeof(tempclient->client_addr);
     tempclient->clientsocketfiledescriptor = accept(listeningfiledescriptor, (struct sockaddr *) &tempclient->client_addr, &cillen);
     pthread_mutex_lock(&broadcastlistmtx);
-    int *temp = realloc(broadcastfds,sizeof(int) * broadcastsize+1);
+    int *temp = realloc(broadcastfds,sizeof(int) * (broadcastsize+1));
     broadcastfds = temp;
-    broadcastfds[broadcastsize+1] = tempclient->clientsocketfiledescriptor;
+    broadcastfds[broadcastsize] = tempclient->clientsocketfiledescriptor;
+    broadcastsize++;
     pthread_mutex_unlock(&broadcastlistmtx);
     //okay now we have to make our two important pieces of information
     pthread_t tid;
