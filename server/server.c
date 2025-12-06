@@ -1,19 +1,16 @@
 /*
     For those of you who do not know what you're looking at
-
     DO NOT RUN THIS IN ITS CURRENT STATE
-
     I HAVE GOTTEN THIS INTO A STATE WHERE IT WORKS IN AN ABSOLUTELY PERFECT ENVIROMENT
-
     REALITY IS NOT PERFECT
-
     IT WILL CAUSE CORRUPTION IF RAN NOW. I'M ONLY COMMITING THIS BECAUSE I NEED TO STOP FOR TODAY. 
-
     I WILL BE FIXING THIS LATER.
 
 */
 
 
+#include<stdlib.h>
+#include <signal.h>
 #include <string.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -42,10 +39,24 @@ size_t numofmessages = 0;
 
 
 int efd;
-
+int globalstop;
 int *broadcastfds = NULL;
 size_t broadcastsize = 0;
+static void signal_handler(int signo)
+{
+    if (signo == SIGTERM)
+    {
+        printf("Shutting down!\n");
+        globalstop=1;
 
+    }
+    else{
+        exit (EXIT_SUCCESS);
+    }
+
+    
+     //default action
+}
 void *clientthread(void *arg){
     struct clientthreadargs *args = arg;
     int clientfd = args->clientsocketfiledescriptor;
@@ -56,7 +67,7 @@ void *clientthread(void *arg){
     //let our client know we can see them and write to them.
     write(clientfd,"Initial connected",strlen("Initial connected"));
     int connected = 1;
-    while (connected)
+    while ((connected && !globalstop))
     {
         char string[MAX_SIZE];
         int messagelength;
@@ -111,20 +122,22 @@ void *clientthread(void *arg){
 void *broadcastthread(void *arg){
     int lastreadindex = -1;
     u_int64_t u;
-    for(;;){
-    read(efd,&u,sizeof(u));
-    lastreadindex++;
-    pthread_mutex_lock(&messagelock);
-    char* tempmessage = strdup(messages[lastreadindex]);
-    if (!tempmessage) continue;
-    pthread_mutex_unlock(&messagelock);
-    pthread_mutex_lock(&broadcastlistmtx);
-    for(int i=0;i<broadcastsize;i++){
-        write(broadcastfds[i],tempmessage,strlen(tempmessage));
+    while(!globalstop){
+        read(efd,&u,sizeof(u));
+        for (int n=0; n<u;n++){
+            lastreadindex++;
+            pthread_mutex_lock(&messagelock);
+            char* tempmessage = strdup(messages[lastreadindex]);
+            pthread_mutex_unlock(&messagelock);
+            if (!tempmessage) continue;
+            pthread_mutex_lock(&broadcastlistmtx);
+            for(int i=0;i<broadcastsize;i++){
+                write(broadcastfds[i],tempmessage,strlen(tempmessage));
+            }
+            pthread_mutex_unlock(&broadcastlistmtx);
+            free(tempmessage);
+        }
     }
-    pthread_mutex_unlock(&broadcastlistmtx);
-    free(tempmessage);
-}
     
 }
 int main(int argc, char *argv[]){
@@ -178,15 +191,15 @@ int main(int argc, char *argv[]){
      exit(1);
   }
 
-
+  globalstop=0;
   /* listen to the socket. the secound */
   listen(listeningfiledescriptor, 15);
   pthread_t broadcastthreadtid;
   pthread_create(&broadcastthreadtid,NULL,broadcastthread,NULL);
   pthread_detach(broadcastthreadtid);
-
+  
   //keep track fo the thread index
-  for(;;) {
+  while (!globalstop) {
     struct clientthreadargs *tempclient;
     tempclient = malloc(sizeof( *tempclient));
     //temporarily stores the client address, this will get saved to the thread and freed up here
@@ -204,11 +217,12 @@ int main(int argc, char *argv[]){
     pthread_create(&tid,NULL,clientthread,tempclient);
     pthread_detach(tid);
 
-
-
-
-
-
      
   }
+
+  free(broadcastfds);
+  for(int i=0; i<numofmessages;i++){
+    free(messages[i]);
+  }
+  free(messages);
 }
