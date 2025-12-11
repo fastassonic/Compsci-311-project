@@ -117,7 +117,7 @@ int main(int argc , char *argv[]) {
         exit(1);
     }
 
-    //Create the Send and Recieve thread
+    //Create the Send and Recieve thread also check for errors
      if(pthread_create(&t1, NULL, recvThread, &sockfd) != 0){
         perror("The recieve thread was not created.\n");
         close)sockfd);
@@ -130,7 +130,7 @@ int main(int argc , char *argv[]) {
 
     }
 
-    //Join the 2 threads togehter.
+    //Join the 2 threads togehter and check for errors.
      if(pthread_join(t1, NULL) != 0){
     perror("The recieve thread was not joined.\n");
     }
@@ -138,7 +138,7 @@ int main(int argc , char *argv[]) {
     perror("The send thread was not joined.\n");
     }
 
-
+    //Still close the socket just in case.
     close(sockfd);
 
 }
