@@ -49,8 +49,8 @@ void *sendThread(void * arg){
     int sent;
     size_t stringLength;
 
-    //This loop listens to the client and then sends the data.Note, send takes void* so we can send it as a generic pointer.
-    //.It also listesns for errors and exits thread and closes the socket.
+    //This loop listens to the client and then sends the data that is typed.
+    //It also listesns for errors and exits thread and closes the socket.
     while(1){
     fgets(sendBuffer, sizeof(sendBuffer), stdin);
     stringLength = strlen(sendBuffer);
@@ -119,23 +119,23 @@ int main(int argc , char *argv[]) {
 
     //Create the Send and Recieve thread also check for errors
      if(pthread_create(&t1, NULL, recvThread, &sockfd) != 0){
-        perror("The recieve thread was not created.\n");
-        close)sockfd);
+        perror("The recieve thread was not created.");
+        close(sockfd);
         exit(1);
     }
      if(pthread_create(&t2, NULL, sendThread, &sockfd) != 0){
-         perror("The send thread was not created.\n");
-         close)sockfd);
+         perror("The send thread was not created.");
+         close(sockfd);
          exit(1);
 
     }
 
     //Join the 2 threads togehter and check for errors.
      if(pthread_join(t1, NULL) != 0){
-    perror("The recieve thread was not joined.\n");
+    perror("The recieve thread was not joined.");
     }
      if(pthread_join(t2, NULL) != 0) {
-    perror("The send thread was not joined.\n");
+    perror("The send thread was not joined.");
     }
 
     //Still close the socket just in case.
