@@ -11,6 +11,8 @@
 #include <pthread.h>
 
 #define SERV_TCP_PORT 23 /* server's port */
+static int clientGlobal = 1;
+static pthread_mutex_t clientMutex = PTHREAD_MUTEX_INITIALIZER;
 
  void *recvThread(void * socketPtr){
     //This function will recieve the data from the server.
@@ -25,13 +27,19 @@
     while(1){
     x=recv(sockfd,recieveBuffer,sizeof(recieveBuffer)-1,0);
     if(x < 0){
+    //Locks the mutex and sets the global signal to 0.Then unlocks the mutex
+    pthread_mutex_lock(&clientMutex);
+    clientGlobal = 0;
+    pthread_mutex_unlock(&clientMutex);
     perror("Could not recieve message");
-    close(sockfd);
-    pthread_exit(NULL);
+    break;
     }else if(x == 0){
+    //If connection is closed then it locks mutex, sets the global signal to 0, and then unlocks mutex
+    pthread_mutex_lock(&clientMutex);
+    clientGlobal = 0;
+    pthread_mutex_unlock(&clientMutex);
     printf("\nConnection closed\n");
-    close(sockfd);
-    pthread_exit(NULL);
+    break;
     }else {
         //This line makes sure that we dont print the whole buffer always.
         recieveBuffer[x] = '\0';
@@ -39,6 +47,7 @@
     }
 
 }
+     return NULL;
 
 }
 
@@ -46,20 +55,32 @@ void *sendThread(void * arg){
     //In this function we send the data to the server that the client types.
     int sockfd = *(int *) arg;
     char sendBuffer[1504];
-    int sent;
+    int sent, checkSend;
     size_t stringLength;
 
     //This loop listens to the client and then sends the data that is typed.
     //It also listesns for errors and exits thread and closes the socket.
     while(1){
+        //Checks if recieve thread is still running before asking for input.
+    pthread_mutex_lock(&clientMutex);
+    checkSend = clientGlobal;
+    pthread_mutex_unlock(&clientMutex);
+    if(!checkSend){
+        break;
+        }
     fgets(sendBuffer, sizeof(sendBuffer), stdin);
     stringLength = strlen(sendBuffer);
+
     sent = send(sockfd,sendBuffer,stringLength, 0);
+    //If send fails then it stops the loop and sets the global signal to 0.
     if( sent < 0){ perror("Could not send message");
-    close(sockfd);
-    pthread_exit(NULL);
+    pthread_mutex_lock(&clientMutex);
+    clientGlobal = 0;
+    pthread_mutex_unlock(&clientMutex);
+    break;
         }
     }
+return NULL;
 }
 
 
