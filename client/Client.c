@@ -9,23 +9,29 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <fcntl.h>
+#include <errno.h>
 
 #define SERV_TCP_PORT 23 /* server's port */
 static int clientGlobal = 1;
 static pthread_mutex_t clientMutex = PTHREAD_MUTEX_INITIALIZER;
 
  void *recvThread(void * socketPtr){
-    //This function will recieve the data from the server.
+    //This function will recieve the data from the server. and write to the FIFO.
     int sockfd = *(int*) socketPtr;
     int x;
     char recieveBuffer [1504];
+    //Opens the write FIFO
+    int writeFIFO = open("/tmp/toClient", O_WRONLY);
+    if(writeFIFO < 0){
+    perror("Could not open the write FIFO");
+    return NULL;
+    }
 
     //Here we loop through and recieve data from the server while checking for any errors.
-    //If there is an error we exit the thread and close the socket(x<0).
-    //Similarly, we exit thread and close socket if the connection is closed(x==0).
-    //Otherwise, we just print the data we recieved as a message.
+    // Then we write that data using a FIFO.
     while(1){
-    x=recv(sockfd,recieveBuffer,sizeof(recieveBuffer)-1,0);
+    x=recv(sockfd,recieveBuffer,sizeof(recieveBuffer),0);
     if(x < 0){
     //Locks the mutex and sets the global signal to 0.Then unlocks the mutex
     pthread_mutex_lock(&clientMutex);
@@ -41,12 +47,12 @@ static pthread_mutex_t clientMutex = PTHREAD_MUTEX_INITIALIZER;
     printf("\nConnection closed\n");
     break;
     }else {
-        //This line makes sure that we dont print the whole buffer always.
-        recieveBuffer[x] = '\0';
-        printf("%s\n",recieveBuffer);
+        write(writeFIFO, recieveBuffer,x);
     }
 
 }
+    //Close the FIFO.
+     close(writeFIFO);
      return NULL;
 
 }
@@ -56,10 +62,15 @@ void *sendThread(void * arg){
     int sockfd = *(int *) arg;
     char sendBuffer[1504];
     int sent, checkSend;
-    size_t stringLength;
+    //Opens the read FIFO and checks for errors
+    int readFIFO = open("/tmp/fromClient", O_RDONLY);
+    if(readFIFO < 0){
+    perror("Could not open the read FIFO.");
+    return NULL;
+    }
 
-    //This loop listens to the client and then sends the data that is typed.
-    //It also listesns for errors and exits thread and closes the socket.
+    //This loop reads from the FIFO and then sends the data to the server.
+    //It also checks for errors.
     while(1){
         //Checks if recieve thread is still running before asking for input.
     pthread_mutex_lock(&clientMutex);
@@ -68,10 +79,13 @@ void *sendThread(void * arg){
     if(!checkSend){
         break;
         }
-    fgets(sendBuffer, sizeof(sendBuffer), stdin);
-    stringLength = strlen(sendBuffer);
+    //Reads the data fromt the FIFO and then send it to the server.
+    int j = read(readFIFO, sendBuffer, sizeof(sendBuffer));
+    if( j <= 0){
+    break;
+    }
 
-    sent = send(sockfd,sendBuffer,stringLength, 0);
+    sent = send(sockfd,sendBuffer,j, 0);
     //If send fails then it stops the loop and sets the global signal to 0.
     if( sent < 0){ perror("Could not send message");
     pthread_mutex_lock(&clientMutex);
@@ -80,7 +94,8 @@ void *sendThread(void * arg){
     break;
         }
     }
-return NULL;
+    close(readFIFO);
+    return NULL;
 }
 
 
@@ -138,8 +153,19 @@ int main(int argc , char *argv[]) {
         exit(1);
     }
 
-    //Create the Send and Recieve thread also check for errors
-     if(pthread_create(&t1, NULL, recvThread, &sockfd) != 0){
+    //Create the Fifos using the mkfifo. Check for errors except if it exists then its fine.
+    if(mkfifo("/tmp/toClient", 0666) < 0 && errno != EEXIST){
+    perror("Could not create toClient with mkfifo()");
+    exit(1);
+    }
+
+    if(mkfifo("/tmp/fromClient", 0666) < 0 && errno != EEXIST){
+    perror("Could not create fromClient with mkfifo()");
+    exit(1);
+    }
+
+    //Create the Send and Recieve thread also check for errors.
+     if(pthread_create(&t1, NULL, recvThread, &sockfd) != 0 ){
         perror("The recieve thread was not created.");
         close(sockfd);
         exit(1);
