@@ -16,24 +16,33 @@ def timestamp() -> str:
 @ui.refreshable
 def chat_messages(own_id: str,messages,pipe_path):
     # loop through recent messages and display them
-
-    with open(pipe_path,'r') as backendpipe:
-        for line in backendpipe:
-            line = line.strip()
-            if line.startswith("[read]"):
-                messages.append(line)
+    fd = os.open(pipe_path, os.O_RDONLY | os.O_NONBLOCK)
+    #This use of an fd is to use a nonblock flag
+    with os.fdopen(fd) as backendpipe:
+        try:
+            while True:
+                #This is sorta hacky but this prevents a block
+                line = backendpipe.readline()
+                if not line:  # no data right now
+                    break
+                line = line.strip()
+                if line.startswith("[read]"):
+                    line = line.replace("[read]", "", 1)
+                    messages.append(line)
+        except BlockingIOError:
+            pass
     
-
-    for m in messages[-len(messages):]:
+    #given it's now a queue with maxlenght of 200
+    for m in messages:
         # this logic will have to be entirely reworked
-        msgid = m.split(":")[0]
-        msg = m.split(":")[1]
+        msgid = m.split(":",1)[0]
+        msg = m.split(":",1)[1]
         
+        #reduced to bare essentials for our own sake
         ui.chat_message(
             text=msg,
             sent=(msgid == own_id),  # checks if its your message
             name=('You' if msgid == own_id else msgid),
-            stamp=m['time'],  # shows the time
         )
         
 
