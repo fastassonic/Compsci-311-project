@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -15,12 +16,14 @@
 #define SERV_TCP_PORT 23 /* server's port */
 static int clientGlobal = 1;
 static pthread_mutex_t clientMutex = PTHREAD_MUTEX_INITIALIZER;
+char fifosToClient [20], fifosFromClient [20];
 
  void *recvThread(void * socketPtr){
     //This function will recieve the data from the server. and write to the FIFO.
     int sockfd = *(int*) socketPtr;
     int x;
-    char recieveBuffer [1504];
+    char recieveBuffer [1500];
+    int writeFIFO = open(fifosToClient, O_RDONLY);
     //Opens the write FIFO
     int writeFIFO = open("/tmp/toClient", O_WRONLY);
     if(writeFIFO < 0){
@@ -60,8 +63,9 @@ static pthread_mutex_t clientMutex = PTHREAD_MUTEX_INITIALIZER;
 void *sendThread(void * arg){
     //In this function we send the data to the server that the client types.
     int sockfd = *(int *) arg;
-    char sendBuffer[1504];
+    char sendBuffer[1500];
     int sent, checkSend;
+    inr reeadFIFO = open(fifosFromClient, O_RDONLY);
     //Opens the read FIFO and checks for errors
     int readFIFO = open("/tmp/fromClient", O_RDONLY);
     if(readFIFO < 0){
@@ -152,6 +156,12 @@ int main(int argc , char *argv[]) {
         perror("Could not connect to the server");
         exit(1);
     }
+
+    //Get each clients pid also make it accessible to the threads.
+    pid_t pid = getpid();
+    sprintf(fifosToClient, "/tmp/toClient_%d", pid);
+    sprintf(fifosFromClient, "/tmp/fromClient_%d", pid);
+
 
     //Create the Fifos using the mkfifo. Check for errors except if it exists then its fine.
     if(mkfifo("/tmp/toClient", 0666) < 0 && errno != EEXIST){
