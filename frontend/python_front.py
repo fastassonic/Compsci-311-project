@@ -103,7 +103,7 @@ def index():
         # main chat area
         with ui.card().classes('w-full').style('height: 65vh; overflow-y: auto;'):
             with ui.column().classes('w-full'):
-                chat_messages(user_id,messages)
+                chat_messages(user_id,messages,pipe_path)
 
         # message input area
         with ui.row().classes('w-full items-center q-pa-sm'):
@@ -128,7 +128,8 @@ def index():
                 """
 
                 text.value = ''
-                #removed on send refresh as thats no longer possible with fifo
+                #this will block with nobody to read it but-
+                #Honestly, if somehow the backend crashes something is wrong
                 with open(pipe_path,"w") as backendpipe:
                     backendpipe.write(f"[Sent]{user_id}:{msg}\n")
                     backendpipe.flush()
@@ -138,7 +139,7 @@ def index():
             text.on('keydown.enter', lambda _: send())
 
         # refreshes so multiple tabs update
-        ui.timer(0.5, lambda: chat_messages.refresh(own_id,messages,pipe_path))
+        ui.timer(0.5, lambda: chat_messages.refresh(user_id,messages,pipe_path))
 
 
 # runs the nicegui app
