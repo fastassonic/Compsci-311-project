@@ -16,7 +16,8 @@
 #define SERV_TCP_PORT 23 /* server's port */
 static int clientGlobal = 1;
 static pthread_mutex_t clientMutex = PTHREAD_MUTEX_INITIALIZER;
-char fifosToClient [64], fifosFromClient [64];
+char fifosToClient [160] ;
+char fifosFromClient [160];
 
  void *recvThread(void * socketPtr){
     //This function will recieve the data from the server. and write to the FIFO.
@@ -33,7 +34,7 @@ char fifosToClient [64], fifosFromClient [64];
     //Here we loop through and recieve data from the server while checking for any errors.
     // Then we write that data using a FIFO.
     while(1){
-    x=recv(sockfd,recieveBuffer,sizeof(recieveBuffer),0);
+    x=recv(sockfd,recieveBuffer,sizeof(recieveBuffer)-1,0);
     if(x < 0){
     //Locks the mutex and sets the global signal to 0.Then unlocks the mutex
     pthread_mutex_lock(&clientMutex);
@@ -85,6 +86,16 @@ void *sendThread(void * arg){
     //Reads the data fromt the FIFO and then send it to the server.
     int j = read(readFIFO, sendBuffer, sizeof(sendBuffer));
     if( j <= 0){
+    pthread_mutex_lock(&clientMutex);
+    clientGlobal = 0;
+    pthread_mutex_unlock(&clientMutex);
+    break;
+    }
+    sendBuffer[j] = '\0';
+    if(strcmp(sendBuffer, "quit") == 0){
+    pthread_mutex_lock(&clientMutex);
+    clientGlobal = 0;
+    pthread_mutex_unlock(&clientMutex);
     break;
     }
 
@@ -113,13 +124,22 @@ int main(int argc , char *argv[]) {
     int buff_size = 0;
     pthread_t t1,t2;
 
+
+
     //Read the host and the port if the user gives it otherwise sets to default.
-    if(argc >= 2)
-        serv_host = argv[1];
-    if(argc == 3)
-        sscanf(argv[2], "%d", &port);
+    if(argc < 2){
+    printf("Usage: %s [fifo_name] [host] [port]\n", argv[0]);
+    exit(1);
+    }
+    if(argc >= 3)
+        serv_host = argv[2];
+    if(argc >= 4)
+        sscanf(argv[3], "%d", &port);
     else
         port = SERV_TCP_PORT;
+
+     sprintf(fifosToClient, "/tmp/%s_toClient", argv[1]);
+     sprintf(fifosFromClient, "/tmp/%s_fromClient", argv[1]);
 
     //Get the address of the host and checks for error.
     if((host_ptr = gethostbyname(serv_host)) == NULL) {
@@ -156,22 +176,6 @@ int main(int argc , char *argv[]) {
         exit(1);
     }
 
-    //Get each clients pid and add it to fifo name.Also give access to the threads.
-    pid_t pid = getpid();
-    sprintf(fifosToClient, "/tmp/toClient_%d", pid);
-    sprintf(fifosFromClient, "/tmp/fromClient_%d", pid);
-
-
-    //Create the Fifos using the mkfifo. Check for errors except if it exists then its fine.
-    if(mkfifo(fifosToClient, 0666) < 0 && errno != EEXIST){
-    perror("Could not create toClient with mkfifo()");
-    exit(1);
-    }
-
-    if(mkfifo(fifosFromClient, 0666) < 0 && errno != EEXIST){
-    perror("Could not create fromClient with mkfifo()");
-    exit(1);
-    }
 
     //Create the Send and Recieve thread also check for errors.
      if(pthread_create(&t1, NULL, recvThread, &sockfd) != 0 ){
