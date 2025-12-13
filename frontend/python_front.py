@@ -3,7 +3,7 @@ from datetime import datetime
 from nicegui import ui, app
 import os
 from collections import deque
-
+import subprocess
 # this is just storing all the messages for now
 # i need help replacing this with the real backend
 #messages = []  # each message is a dict with user + text + time
@@ -72,7 +72,7 @@ def index():
     except FileExistsError:
         print(f"Error intilizing pipe {pipe_path}, does it allready exist?")
     
-
+    Process = subprocess.Popen(["../client/Client",pipe_path],stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
     # small styling so it looks nicer
@@ -83,6 +83,7 @@ def index():
 
     with ui.column().classes('chat-wrap w-full'):
         # top bar
+        #right now this is useless, I cna probbaly implement this super easily*
         with ui.row().classes('w-full items-center justify-between q-pa-sm'):
             ui.label('CMPSC 311Chat Room ').classes('text-2xl font-bold')
 
