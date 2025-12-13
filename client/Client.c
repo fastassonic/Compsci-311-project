@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -15,14 +16,15 @@
 #define SERV_TCP_PORT 23 /* server's port */
 static int clientGlobal = 1;
 static pthread_mutex_t clientMutex = PTHREAD_MUTEX_INITIALIZER;
+char fifosToClient [64], fifosFromClient [64];
 
  void *recvThread(void * socketPtr){
     //This function will recieve the data from the server. and write to the FIFO.
     int sockfd = *(int*) socketPtr;
     int x;
-    char recieveBuffer [1504];
+    char recieveBuffer [1500];
     //Opens the write FIFO
-    int writeFIFO = open("/tmp/toClient", O_WRONLY);
+    int writeFIFO = open(fifosToClient, O_WRONLY );
     if(writeFIFO < 0){
     perror("Could not open the write FIFO");
     return NULL;
@@ -60,10 +62,11 @@ static pthread_mutex_t clientMutex = PTHREAD_MUTEX_INITIALIZER;
 void *sendThread(void * arg){
     //In this function we send the data to the server that the client types.
     int sockfd = *(int *) arg;
-    char sendBuffer[1504];
+    char sendBuffer[1500];
     int sent, checkSend;
     //Opens the read FIFO and checks for errors
-    int readFIFO = open("/tmp/fromClient", O_RDONLY);
+    int readFIFO = open(fifosFromClient, O_RDONLY);
+
     if(readFIFO < 0){
     perror("Could not open the read FIFO.");
     return NULL;
@@ -153,13 +156,19 @@ int main(int argc , char *argv[]) {
         exit(1);
     }
 
+    //Get each clients pid and add it to fifo name.Also give access to the threads.
+    pid_t pid = getpid();
+    sprintf(fifosToClient, "/tmp/toClient_%d", pid);
+    sprintf(fifosFromClient, "/tmp/fromClient_%d", pid);
+
+
     //Create the Fifos using the mkfifo. Check for errors except if it exists then its fine.
-    if(mkfifo("/tmp/toClient", 0666) < 0 && errno != EEXIST){
+    if(mkfifo(fifosToClient, 0666) < 0 && errno != EEXIST){
     perror("Could not create toClient with mkfifo()");
     exit(1);
     }
 
-    if(mkfifo("/tmp/fromClient", 0666) < 0 && errno != EEXIST){
+    if(mkfifo(fifosFromClient, 0666) < 0 && errno != EEXIST){
     perror("Could not create fromClient with mkfifo()");
     exit(1);
     }
